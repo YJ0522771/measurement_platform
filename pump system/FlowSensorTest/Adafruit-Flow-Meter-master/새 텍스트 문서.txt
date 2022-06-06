@@ -1,0 +1,113 @@
+/********************************************************** 
+2 This is example code for using the Adafruit liquid flow meters.  
+3  
+4 Tested and works great with the Adafruit plastic and brass meters 
+5     ------> http://www.adafruit.com/products/828 
+6     ------> http://www.adafruit.com/products/833 
+7  
+8 Connect the red wire to +5V,  
+9 the black wire to common ground  
+10 and the yellow sensor wire to pin #2 
+11  
+12 Adafruit invests time and resources providing this open source code,  
+13 please support Adafruit and open-source hardware by purchasing  
+14 products from Adafruit! 
+15  
+16 Written by Limor Fried/Ladyada  for Adafruit Industries.   
+17 BSD license, check license.txt for more information 
+18 All text above must be included in any redistribution 
+19 **********************************************************/ 
+20 #include "LiquidCrystal.h" 
+21 LiquidCrystal lcd(7, 8, 9, 10, 11, 12); 
+22 
+ 
+23 // which pin to use for reading the sensor? can use any pin! 
+24 #define FLOWSENSORPIN 2 
+25 
+ 
+26 // count how many pulses! 
+27 volatile uint16_t pulses = 0; 
+28 // track the state of the pulse pin 
+29 volatile uint8_t lastflowpinstate; 
+30 // you can try to keep time of how long it is between pulses 
+31 volatile uint32_t lastflowratetimer = 0; 
+32 // and use that to calculate a flow rate 
+33 volatile float flowrate; 
+34 // Interrupt is called once a millisecond, looks for any pulses from the sensor! 
+35 SIGNAL(TIMER0_COMPA_vect) { 
+36   uint8_t x = digitalRead(FLOWSENSORPIN); 
+37    
+38   if (x == lastflowpinstate) { 
+39     lastflowratetimer++; 
+40     return; // nothing changed! 
+41   } 
+42    
+43   if (x == HIGH) { 
+44     //low to high transition! 
+45     pulses++; 
+46   } 
+47   lastflowpinstate = x; 
+48   flowrate = 1000.0; 
+49   flowrate /= lastflowratetimer;  // in hertz 
+50   lastflowratetimer = 0; 
+51 } 
+52 
+ 
+53 void useInterrupt(boolean v) { 
+54   if (v) { 
+55     // Timer0 is already used for millis() - we'll just interrupt somewhere 
+56     // in the middle and call the "Compare A" function above 
+57     OCR0A = 0xAF; 
+58     TIMSK0 |= _BV(OCIE0A); 
+59   } else { 
+60     // do not call the interrupt function COMPA anymore 
+61     TIMSK0 &= ~_BV(OCIE0A); 
+62   } 
+63 } 
+64 
+ 
+65 void setup() { 
+66    Serial.begin(9600); 
+67    Serial.print("Flow sensor test!"); 
+68    lcd.begin(16, 2); 
+69     
+70    pinMode(FLOWSENSORPIN, INPUT); 
+71    digitalWrite(FLOWSENSORPIN, HIGH); 
+72    lastflowpinstate = digitalRead(FLOWSENSORPIN); 
+73    useInterrupt(true); 
+74 } 
+75 
+ 
+76 void loop()                     // run over and over again 
+77 {  
+78   lcd.setCursor(0, 0); 
+79   lcd.print("Pulses:"); lcd.print(pulses, DEC); 
+80   lcd.print(" Hz:"); 
+81   lcd.print(flowrate); 
+82   //lcd.print(flowrate); 
+83   Serial.print("Freq: "); Serial.println(flowrate); 
+84   Serial.print("Pulses: "); Serial.println(pulses, DEC); 
+85    
+86   // if a plastic sensor use the following calculation 
+87   // Sensor Frequency (Hz) = 7.5 * Q (Liters/min) 
+88   // Liters = Q * time elapsed (seconds) / 60 (seconds/minute) 
+89   // Liters = (Frequency (Pulses/second) / 7.5) * time elapsed (seconds) / 60 
+90   // Liters = Pulses / (7.5 * 60) 
+91   float liters = pulses; 
+92   liters /= 7.5; 
+93   liters /= 60.0; 
+94 
+ 
+95 /* 
+96   // if a brass sensor use the following calculation 
+97   float liters = pulses; 
+98   liters /= 8.1; 
+99   liters -= 6; 
+100   liters /= 60.0; 
+101 */ 
+102   Serial.print(liters); Serial.println(" Liters"); 
+103   lcd.setCursor(0, 1); 
+104   lcd.print(liters); lcd.print(" Liters        "); 
+105   
+106   delay(100); 
+107 } 
